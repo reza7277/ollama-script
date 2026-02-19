@@ -393,10 +393,10 @@ fetch_available_models() {
     fi
 
     # Try ollamadb.dev API
-    spinner_start "Fetching model list from ollamadb.dev..."
+    spinner_start "Fetching model list from ollamadb.dev..." >&2
     local response
     response=$(curl -s --max-time 10 "${OLLAMADB_API}?limit=200&sort_by=pulls&order=desc" 2>/dev/null || echo "")
-    spinner_stop
+    spinner_stop >&2
 
     if echo "$response" | jq -e '.models' &>/dev/null; then
         local models
@@ -407,7 +407,7 @@ fetch_available_models() {
     fi
 
     # Fallback to embedded list
-    print_warn "Could not reach ollamadb.dev — using built-in model list."
+    print_warn "Could not reach ollamadb.dev — using built-in model list." >&2
     get_fallback_models | jq '.' > "$CACHE_FILE"
     get_fallback_models
 }
