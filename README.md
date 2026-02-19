@@ -77,8 +77,8 @@ It lets you browse the full Ollama model library, download models with quantizat
 
 ```bash
 # Clone the repository
-git clone https://github.com/Web3loverz/ollama-manager.git
-cd ollama-manager
+git clone https://github.com/reza7277/ollama-script.git
+cd ollama-script
 
 # Make it executable
 chmod +x ollama_manager.sh
@@ -90,7 +90,7 @@ chmod +x ollama_manager.sh
 Or as a one-liner:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/Web3loverz/ollama-manager/main/ollama_manager.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/reza7277/ollama-script/refs/heads/main/ollama_manager.sh)
 ```
 
 ---
