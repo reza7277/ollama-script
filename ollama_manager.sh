@@ -11,7 +11,7 @@ set -euo pipefail
 # ─────────────────────────────────────────────────────────────────────────────
 SCRIPT_VERSION="2.0.0"
 OLLAMA_API="http://localhost:11434"
-OLLAMADB_API="https://ollamadb.dev/api/v1/models"
+OLLAMADB_API="https://ollama.ai/api/v1/models"
 OLLAMA_INSTALL_URL="https://ollama.com/install.sh"
 MANAGER_DIR="$HOME/.ollama_manager"
 CACHE_FILE="$MANAGER_DIR/model_cache.json"
@@ -189,6 +189,13 @@ ensure_api_access() {
     local host="ollamadb.dev"
     local port=443
 
+    # Check if we can resolve the host first (skip if NXDOMAIN)
+    if ! getent hosts "$host" &>/dev/null; then
+        print_warn "DNS: Cannot resolve $host (domain may be down)" >&2
+        print_info "Using offline model list." >&2
+        return 1  # Return early - don't try to connect
+    fi
+
     # Already reachable — nothing to do
     if curl -s --max-time 5 "https://$host" &>/dev/null; then
         return 0
@@ -198,52 +205,18 @@ ensure_api_access() {
     echo "" >&2
     local opened=false
 
-    # ── UFW ──────────────────────────────────────────────────────────────────
-    if command -v ufw &>/dev/null; then
-        if sudo ufw status 2>/dev/null | grep -q "active"; then
-            if sudo ufw allow out proto tcp to any port "$port" comment 'ollama-manager' &>/dev/null; then
-                print_success "UFW: allowed outbound HTTPS (port $port)" >&2
-                opened=true
-            fi
-        fi
+    # Try to open firewall port
+    if command -v ufw &>/dev/null && sudo ufw status 2>/dev/null | grep -q "active"; then
+        sudo ufw allow out proto tcp to any port "$port" comment 'ollama-manager' &>/dev/null && opened=true
     fi
 
-    # ── firewalld ────────────────────────────────────────────────────────────
-    if command -v firewall-cmd &>/dev/null; then
-        if firewall-cmd --state &>/dev/null; then
-            if sudo firewall-cmd --permanent --add-service=https &>/dev/null && \
-               sudo firewall-cmd --reload &>/dev/null; then
-                print_success "firewalld: HTTPS service enabled" >&2
-                opened=true
-            fi
-        fi
-    fi
-
-    # ── iptables (fallback) ───────────────────────────────────────────────────
-    if ! $opened && command -v iptables &>/dev/null; then
-        local ip
-        ip=$(getent hosts "$host" 2>/dev/null | awk '{print $1}' | head -1)
-        if [[ -n "$ip" ]]; then
-            if sudo iptables -I OUTPUT -d "$ip" -p tcp --dport "$port" -j ACCEPT &>/dev/null; then
-                print_success "iptables: opened outbound to $host ($ip:$port)" >&2
-                opened=true
-            fi
-        fi
-    fi
-
-    # ── Verify ───────────────────────────────────────────────────────────────
+    # Verify connection
     sleep 1
     if curl -s --max-time 5 "https://$host" &>/dev/null; then
-        print_success "Connection to $host established!" >&2
         return 0
     fi
 
-    if $opened; then
-        print_warn "Firewall rules updated but still blocked (likely cloud Security Group)." >&2
-    else
-        print_warn "Could not open firewall automatically." >&2
-    fi
-    print_info "To fix on cloud servers: allow outbound TCP 443 in your Security Group." >&2
+    print_warn "Connection blocked. Using offline model list instead." >&2
     return 1
 }
 
@@ -460,8 +433,8 @@ fetch_available_models() {
     # Ensure outbound port 443 is open before fetching
     ensure_api_access >&2 || true
 
-    # Try ollamadb.dev API
-    spinner_start "Fetching model list from ollamadb.dev..." >&2
+    # Try ollamadb API
+    spinner_start "Fetching model list..." >&2
     local response
     response=$(curl -s --max-time 10 "${OLLAMADB_API}?limit=200&sort_by=pulls&order=desc" 2>/dev/null || echo "")
     spinner_stop >&2
@@ -474,9 +447,8 @@ fetch_available_models() {
         return 0
     fi
 
-    # Fallback to embedded list
-    print_warn "Could not reach ollamadb.dev — using built-in model list." >&2
-    get_fallback_models | jq '.' > "$CACHE_FILE"
+    # Use fallback list (most reliable)
+    print_warn "Using offline model list." >&2
     get_fallback_models
 }
 
